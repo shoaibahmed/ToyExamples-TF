@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import os.path
-import dill
 from optparse import OptionParser
 
 # Command line options
@@ -20,7 +19,6 @@ parser.add_option("--loadSession", action="store_true", dest="loadSession", defa
 parser.add_option("--dynamicRNN", action="store_true", dest="dynamicRNN", default=False, help="Use dynamic RNN")
 parser.add_option("--biDirectionalLSTM", action="store_true", dest="biDirectionalLSTM", default=False, help="Use Bi-Directional RNN")
 parser.add_option("--useRMS", action="store_true", dest="useRMS", default=False, help="Use RMS instead of separate x, y, z values")
-# parser.add_option("--dillBackupFileName", action="store", type="string", dest="dillBackupFileName", default="workspace.pkl", help="Filename containing all the workspace variables")
 
 # Parse command line options
 (options, args) = parser.parse_args()
@@ -30,38 +28,26 @@ n_sensors = 1
 n_input = n_sensors * options.numberOfReadingsPerTimeStamp # Number of sensor readings per timestamp
 n_readings_per_timestamp = int(n_input / n_sensors)
 n_steps = int(784 / n_readings_per_timestamp) # timesteps (Sequence length)
-sequence_length = n_input #n_input * n_steps
+sequence_length = n_input
 
 print ("Number of inputs: %d" % n_input)
 print ("Number of readings per timestamp: %d" % n_readings_per_timestamp)
 print ("Number of steps: %d" % n_steps)
 
 import tensorflow as tf
-from mnist import MNIST
-mnist = MNIST('/netscratch/siddiqui/Behavior Analysis/mnist/')
-train_data = mnist.load_training()
-train_labels = np.array(train_data[1])
-train_data = np.array(train_data[0])
-test_data = mnist.load_testing()
-test_labels = np.array(test_data[1])
-test_data = np.array(test_data[0])
+from tensorflow.examples.tutorials.mnist import input_data
+mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
+
+train_data = mnist.train.images
+train_labels = mnist.train.labels
+validation_data = mnist.validation.images
+validation_labels = mnist.validation.labels
+test_data = mnist.test.images
+test_labels = mnist.test.labels
 
 # Reshape training data
 train_data = np.reshape(train_data, (train_data.shape[0], n_steps, n_input))
 test_data = np.reshape(test_data, (test_data.shape[0], n_steps, n_input))
-
-# Convert labels to one-hot encoding
-# train_labels_one_hot = []
-# test_labels_one_hot = []
-# for label in train_labels:
-#     one_hot_vec = np.zeros([options.numberOfClasses])
-#     one_hot_vec[int(label)] = 1
-#     train_labels_one_hot.append(one_hot_vec)
-
-# for label in test_labels:
-#     one_hot_vec = np.zeros([options.numberOfClasses])
-#     one_hot_vec[int(label)] = 1
-#     test_labels_one_hot.append(one_hot_vec)
 
 if options.trainModel:
     # tf Graph input
@@ -150,6 +136,7 @@ if options.trainModel:
         return output
 
     pred = RNN(x, weights, biases)
+    print (pred.get_shape())
     # pred = RNN(x)
 
     # Define loss and optimizer
@@ -212,14 +199,7 @@ with tf.Session() as sess:
                 # print("Data shape: %s" % str(data_batch.shape))
 
                 # All labels are equivalent
-                labels = train_labels[indices]
-                labels_one_hot = []
-                # Convert labels to one-hot
-                for label in labels:
-                    one_hot_vec = np.zeros([options.numberOfClasses])
-                    one_hot_vec[int(label)] = 1
-                    labels_one_hot.append(one_hot_vec)
-                labels_one_hot = np.array(labels_one_hot)
+                labels_one_hot = train_labels[indices]
 
                 # Run optimization op (backprop)
                 [train_loss, train_acc, summary, _] = sess.run([loss, accuracy, mergedSummaryOp, optimizer], feed_dict={x: data_batch, y: labels_one_hot, dropoutProbilityPlaceholder: options.dropoutKeepProb})
@@ -272,15 +252,8 @@ with tf.Session() as sess:
             # print("Data shape: %s" % str(data_batch.shape))
 
             # All labels are equivalent
-            labels = test_labels[indices]
-            labels_one_hot = []
-            # Convert labels to one-hot
-            for label in labels:
-                one_hot_vec = np.zeros([options.numberOfClasses])
-                one_hot_vec[int(label)] = 1
-                labels_one_hot.append(one_hot_vec)
-            labels_one_hot = np.array(labels_one_hot)
-
+            labels_one_hot = test_labels[indices]
+            
             # Compute loss
             [test_loss, test_acc] = sess.run([loss, accuracy], feed_dict={x: data_batch, y: labels_one_hot, dropoutProbilityPlaceholder: 1.0})
             print ("Iteration: %d, Minibatch Loss: %.3f, Accuracy: %.2f" % (step, test_loss, test_acc * 100))
